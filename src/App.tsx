@@ -163,12 +163,13 @@ export default function App() {
 
   const signIn = async () => {
     if (!email) return
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } })
+    const redirect = import.meta.env.VITE_REDIRECT_URL || window.location.origin
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: redirect }
+    })
     if (error) alert(error.message)
     else alert('Check your email for the magic link.')
-  }
-  const signOut = async () => {
-    await supabase.auth.signOut()
   }
 
   useEffect(() => {
