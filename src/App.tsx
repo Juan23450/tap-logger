@@ -8,11 +8,11 @@ interface LogRow {
   id: string
   ts: number
   user_id?: string
-  eat?: string
-  drink?: string
-  feel?: string
-  posture?: string
-  note?: string
+  eat?: string | null
+  drink?: string | null
+  feel?: string | null
+  posture?: string | null
+  note?: string | null
 }
 
 const defaultCols: { key: ColKey; label: string; icon: React.ReactNode }[] = [
@@ -85,15 +85,21 @@ export default function App() {
 
   const sorted = useMemo(() => [...rows].sort((a, b) => b.ts - a.ts), [rows])
 
-  const addRow = async (col: ColKey, autoAsk = true) => {
+  // CLOUD-FIRST: immediately insert a row on tap
+  const addRow = async (col: ColKey) => {
     if (!session) return alert('Please sign in first (email magic link).')
     const ts = Date.now()
-    const r: LogRow = { id: crypto.randomUUID(), ts, user_id: session.user.id, [col]: '' } as LogRow
+    const r: LogRow = { id: crypto.randomUUID(), ts, user_id: session.user.id, eat: null, drink: null, feel: null, posture: null }
+    r[col] = '✔'
     setRows((prev) => [r, ...prev])
-    if (autoAsk) {
-      setPendingCol(col)
-      setAskNote(true)
-      setQuickNote('')
+    setPendingCol(col)
+    setAskNote(true)
+    setQuickNote('')
+    try {
+      const { error } = await supabase.from('logs').insert(r as any)
+      if (error) throw error
+    } catch (e) {
+      alert('Cloud save failed. Tap “sync” later when online.')
     }
     setTimeout(() => topRef.current?.scrollIntoView({ behavior: 'smooth' }), 40)
   }
@@ -106,7 +112,7 @@ export default function App() {
     if (pendingCol && pendingCol !== 'note') updated[pendingCol] = text || '✔'
     if (pendingCol === 'note') updated.note = text
     setRows((prev) => [updated, ...prev.slice(1)])
-    const { error } = await supabase.from('logs').upsert(updated, { onConflict: 'id' })
+    const { error } = await supabase.from('logs').upsert(updated as any, { onConflict: 'id' })
     if (error) alert('Sync failed; try again.')
   }
 
@@ -117,6 +123,7 @@ export default function App() {
     setQuickNote('')
   }
   const cancelNote = () => {
+    // Row was already inserted to cloud with a checkmark; just close the note prompt.
     setAskNote(false)
     setPendingCol(null)
     setQuickNote('')
@@ -268,7 +275,7 @@ export default function App() {
             <div className="px-3 py-2">note</div>
           </div>
           <div>
-            {!session && <div className="p-6 text-sm text-neutral-600">Sign in with your email (magic link) to start logging. Your entries will sync across phone & desktop automatically.</div>}
+            {!session && <div className="p-6 text-sm text-neutral-600">Sign in with your email (magic link) to start logging. Your entries sync to the cloud (Supabase) and are available on any device.</div>}
             {sorted.length === 0 && session && <div className="p-6 text-sm text-neutral-500">No entries yet. Tap a button above (or press E/D/F/P/N) to create a row with the current time.</div>}
             {sorted.map((r, idx) => {
               const prev = sorted[idx - 1]
@@ -295,7 +302,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="mt-4 text-xs text-neutral-500">Tips: Use keyboard shortcuts <span className="font-mono">E/D/F/P/N</span>. Newest rows always appear at the top. Data syncs to your Supabase project.</div>
+        <div className="mt-4 text-xs text-neutral-500">Tips: Use keyboard shortcuts <span className="font-mono">E/D/F/P/N</span>. Newest rows always appear at the top. Cloud saves happen immediately; use “sync” to pull latest if you used another device.</div>
       </div>
     </div>
   )
